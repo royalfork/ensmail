@@ -2,8 +2,11 @@ package ensmail
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -40,6 +43,7 @@ func NewLMTPServer(r ResolveFunc, nf NewForwarderClient) (*LMTPResolveForwarder,
 		resolver:     r,
 		newForwarder: nf,
 	}
+	// TODO: set timeouts? set max bytes received?
 	l.srv = smtp.NewServer(&l)
 	l.srv.LMTP = true
 	return &l, nil
@@ -101,6 +105,7 @@ func (s *session) Rcpt(to string) error {
 	if err != nil {
 		return err
 	}
+	// TODO: what happens if s.unresolved[resolved] != ""?
 	s.unresolved[resolved] = to
 	return s.forwarder.Rcpt(resolved)
 }
@@ -109,25 +114,61 @@ func (s *session) Data(r io.Reader) error {
 	return errors.New("LMTPData method should be called")
 }
 
+// LMTPData copies data from r into forwarder DATA, waits for return
+// status for every recipient.  It returns err only if forwarder DATA
+// call fails.
 func (s *session) LMTPData(r io.Reader, status smtp.StatusCollector) error {
-	w, err := s.forwarder.LMTPData(func(rcpt string, err *smtp.SMTPError) {
-		if err != nil {
-			status.SetStatus(s.unresolved[rcpt], err)
-			return
+	type statusRsp struct {
+		rcpt string
+		err  error
+	}
+
+	// Collect data responses per recipient.
+	// TODO: this is subtly broken, because it's possible that Rcpt is
+	// called with same "to" string, multiple times.  In that case,
+	// status.SetStatus is supposed to be called multiple times for
+	// each rcpt.
+	dataRsps := make(chan statusRsp, len(s.unresolved))
+
+	w, err := s.forwarder.LMTPData(func(rcpt string, serr *smtp.SMTPError) {
+		// Convert half-nil serr to full-nil err interface value
+		var err error
+		if serr != nil {
+			err = serr
 		}
-		// Because err is half-nil, a full-nil err must be sent into
-		// SetStatus.
-		status.SetStatus(s.unresolved[rcpt], nil)
+		dataRsps <- statusRsp{rcpt, err}
 	})
 	if err != nil {
 		return err
 	}
-	defer w.Close()
 
 	// TODO add "Received:" header?  Or other header to document resolution?
 
+	// Copy received data to forwarding server.
 	_, err = io.Copy(w, r)
-	return err
+	w.Close()
+	if err != nil {
+		return err
+	}
+
+	// Wait for all statuses to return, and call SetStatus appropriately.
+	for range s.unresolved {
+		select {
+		case rsp := <-dataRsps:
+			status.SetStatus(s.unresolved[rsp.rcpt], rsp.err)
+			delete(s.unresolved, rsp.rcpt)
+		// TODO: This timeout should not be hardcoded.  What's a good
+		// value for this?
+		case <-time.After(5 * time.Second):
+			var missingRcpt strings.Builder
+			for _, missing := range s.unresolved {
+				fmt.Fprintf(&missingRcpt, "%s, ", missing)
+			}
+			return errors.New("timeout waiting for forward LMTP status: " + strings.TrimRight(missingRcpt.String(), ", "))
+		}
+	}
+
+	return nil
 }
 
 func (s *session) Logout() error {
