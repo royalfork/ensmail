@@ -1,29 +1,75 @@
 package ensmail
 
 import (
+	"context"
 	"errors"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/royalfork/ensmail/pkg/ens"
 	"golang.org/x/net/idna"
 )
 
+var (
+	ErrNoResolver = errors.New("no resolver set")
+	ErrNoEmail    = errors.New("no email set")
+)
+
 type ENSResolver struct {
+	caller   bind.ContractCaller
+	registry *ens.ENSCaller
 }
 
-func NewENSResolver() (ENSResolver, error) {
-	return ENSResolver{}, nil
+func NewENSResolver(registryAddr common.Address, caller bind.ContractCaller) (*ENSResolver, error) {
+	registry, err := ens.NewENSCaller(registryAddr, caller)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ENSResolver{
+		caller:   caller,
+		registry: registry,
+	}, nil
 }
 
-// Resolve receives a 2nd level .eth label, and returns the email address associated
-func (r ENSResolver) Email(name string) (string, error) {
-	// normalize name
-	// Namehash name
-	// get resolver from registry
-	// ask resolver for text/email
-	// ensure email is valid
-	return "", nil
+// Email returns the email text record for the given name.  Before
+// querying the ENS registry, the ".eth" suffix is added to name.
+func (r *ENSResolver) Email(ctx context.Context, name string) (string, error) {
+	const (
+		TLDSuffix = ".eth"
+		// Defined by https://docs.ens.domains/ens-improvement-proposals/ensip-5-text-records
+		TextEmailKey = "email"
+	)
+
+	node, err := nameHash(name + TLDSuffix)
+	if err != nil {
+		return "", err
+	}
+
+	callOpts := &bind.CallOpts{Context: ctx}
+
+	resolverAddr, err := r.registry.Resolver(callOpts, node)
+	if err != nil {
+		return "", err
+	} else if resolverAddr == (common.Address{}) {
+		return "", ErrNoResolver
+	}
+
+	resolver, err := ens.NewTextResolverCaller(resolverAddr, r.caller)
+	if err != nil {
+		return "", err
+	}
+
+	email, err := resolver.Text(callOpts, node, TextEmailKey)
+	if err != nil {
+		return "", err
+	} else if email == "" {
+		return "", ErrNoEmail
+	}
+
+	return email, nil
 }
 
 // Implementation of
@@ -31,8 +77,8 @@ func (r ENSResolver) Email(name string) (string, error) {
 func nameHash(name string) ([32]byte, error) {
 	var node common.Hash
 
-	// Because strings.Split("", ".") returns slice of len 1, special
-	// case is needed to return before any hashing occurs.
+	// Because strings.Split("", ".") returns slice of len 1, must
+	// return 0x0 before any hashing occurs.
 	if name == "" {
 		return node, nil
 	}
