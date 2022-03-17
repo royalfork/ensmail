@@ -2,6 +2,7 @@ package ensmail
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -228,7 +229,7 @@ func TestLMTPServer(t *testing.T) {
 	// After sender finishes completes DATA command, if forwarding
 	// server has issue, ensure that error bubbles back to sender.
 	t.Run("errForwardData", func(t *testing.T) {
-		resolver := func(in string) (string, error) { return in, nil }
+		resolver := func(ctx context.Context, in string) (string, error) { return in, nil }
 
 		errBadForward := errors.New("bad forward")
 		srv, err := NewLMTPServer(resolver, func() (ForwarderClient, error) {
@@ -277,11 +278,11 @@ func TestLMTPServer(t *testing.T) {
 
 	// Some rcpt resolve, some don't.
 	t.Run("errMultiRcptResolve", func(t *testing.T) {
-		resolver := func(in string) (string, error) {
+		resolver := func(ctx context.Context, in string) (string, error) {
 			if strings.HasPrefix(in, "BAD") {
 				return "", errors.New("invalid resolve input")
 			}
-			return "RESOLVED" + in, nil
+			return fmt.Sprintf("RESOLVED%s@resolved.test", in), nil
 		}
 
 		var recorder sessionRecorder
@@ -316,8 +317,8 @@ func TestLMTPServer(t *testing.T) {
 			{
 				From: "sender@public.com",
 				To: []string{
-					"RESOLVEDrcpt1@ensmail.org",
-					"RESOLVEDrcpt3@ensmail.org",
+					"RESOLVEDrcpt1@resolved.test",
+					"RESOLVEDrcpt3@resolved.test",
 				},
 				Data: *bytes.NewBuffer(testMsg),
 			},
@@ -327,7 +328,7 @@ func TestLMTPServer(t *testing.T) {
 	// LMTP provides per-recipient status on data.  If some fail,
 	// ensure error is returned correctly.
 	t.Run("errMultiRcptForward", func(t *testing.T) {
-		resolver := func(in string) (string, error) {
+		resolver := func(ctx context.Context, in string) (string, error) {
 			return in, nil
 		}
 
@@ -388,8 +389,8 @@ func TestLMTPServer(t *testing.T) {
 
 	// Mail with single rcpt is correctly resolved and forwarded.
 	t.Run("success", func(t *testing.T) {
-		resolver := func(in string) (string, error) {
-			return "RESOLVED" + in, nil
+		resolver := func(ctx context.Context, in string) (string, error) {
+			return fmt.Sprintf("RESOLVED%s@resolved.test", in), nil
 		}
 
 		var recorder sessionRecorder
@@ -436,15 +437,15 @@ func TestLMTPServer(t *testing.T) {
 		recorder.check(t, []*testSession{
 			{
 				From: "sender1@public.com",
-				To:   []string{"RESOLVEDrcpt@ensmail.org"},
+				To:   []string{"RESOLVEDrcpt@resolved.test"},
 				Data: *bytes.NewBuffer(testMsg),
 			},
 			{
 				From: "sender2@public.com",
 				To: []string{
-					"RESOLVEDrcpt1@ensmail.org",
-					"RESOLVEDrcpt2@ensmail.org",
-					"RESOLVEDrcpt3@ensmail.org",
+					"RESOLVEDrcpt1@resolved.test",
+					"RESOLVEDrcpt2@resolved.test",
+					"RESOLVEDrcpt3@resolved.test",
 				},
 				Data: *bytes.NewBuffer(testMsg),
 			},

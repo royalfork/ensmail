@@ -15,8 +15,7 @@ import (
 // TODO logging?
 
 // ResolveFunc resolves the local-part of an incoming email address to
-// a forward address.
-// TODO: rename "Resolve"?
+// a forward email address.
 type ResolveFunc func(context.Context, string) (string, error)
 
 // NewForwarderClient returns a Forwarder, used to forward emails after
@@ -175,7 +174,7 @@ func (s *session) LMTPData(r io.Reader, status smtp.StatusCollector) error {
 			for _, missing := range s.unresolved {
 				fmt.Fprintf(&missingRcpt, "%s, ", missing)
 			}
-			return errors.New("timeout waiting for forward LMTP status: " + strings.TrimRight(missingRcpt.String(), ", "))
+			return fmt.Errorf("timeout waiting for forward LMTP status: %s", strings.TrimRight(missingRcpt.String(), ", "))
 		}
 	}
 
