@@ -1,4 +1,5 @@
 project.org
 .\#*
 scratch/
-
+test/ensmail.test-key.pem
+test/ensmail.test.pem

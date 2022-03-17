@@ -1,6 +1,7 @@
 package ensmail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,8 +12,12 @@ import (
 	"github.com/emersion/go-smtp"
 )
 
-// ResolveFunc resolves an email address to a forward address.
-type ResolveFunc func(string) (string, error)
+// TODO logging?
+
+// ResolveFunc resolves the local-part of an incoming email address to
+// a forward address.
+// TODO: rename "Resolve"?
+type ResolveFunc func(context.Context, string) (string, error)
 
 // NewForwarderClient returns a Forwarder, used to forward emails after
 // address resolution.
@@ -101,7 +106,13 @@ func (s *session) Mail(from string, opts *smtp.MailOptions) error {
 // Rcpt will resolve "to", and pass the resolved value to the
 // forwarder.
 func (s *session) Rcpt(to string) error {
-	resolved, err := s.resolver(to)
+	at := strings.LastIndex(to, "@")
+	if at <= 0 {
+		return fmt.Errorf("invalid recipient email: %s", to)
+	}
+
+	// TODO: use proper context
+	resolved, err := s.resolver(context.Background(), to[:at])
 	if err != nil {
 		return err
 	}
