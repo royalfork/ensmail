@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/go-kit/log"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -184,13 +185,19 @@ func sendMail(sock string, from string, to []string, data []byte) error {
 	return nil
 }
 
+var (
+	// logger = log.With(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), "ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
+	logger = log.NewNopLogger()
+)
+
 func TestLMTPServer(t *testing.T) {
+
 	// Upon receiving LHLO, a connection to the forwarding server is
 	// established.  If this connection can't be established, bubble
 	// error back to original LHLO sender.
 	t.Run("errForwarderCl", func(t *testing.T) {
 		// Create server
-		srv, err := NewLMTPServer(nil, func() (ForwarderClient, error) {
+		srv, err := NewLMTPServer(logger, nil, func() (ForwarderClient, error) {
 			return nil, errors.New("TEST forward error")
 		})
 		if err != nil {
@@ -232,7 +239,7 @@ func TestLMTPServer(t *testing.T) {
 		resolver := func(ctx context.Context, in string) (string, error) { return in, nil }
 
 		errBadForward := errors.New("bad forward")
-		srv, err := NewLMTPServer(resolver, func() (ForwarderClient, error) {
+		srv, err := NewLMTPServer(logger, resolver, func() (ForwarderClient, error) {
 			return mockForwarder{
 				dataFunc: func(statusCb func(rcpt string, status *smtp.SMTPError)) (io.WriteCloser, error) {
 					return nil, errBadForward
@@ -286,7 +293,7 @@ func TestLMTPServer(t *testing.T) {
 		}
 
 		var recorder sessionRecorder
-		srv, err := NewLMTPServer(resolver, recorder.Forwarder)
+		srv, err := NewLMTPServer(logger, resolver, recorder.Forwarder)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -332,7 +339,7 @@ func TestLMTPServer(t *testing.T) {
 			return in, nil
 		}
 
-		srv, err := NewLMTPServer(resolver, func() (ForwarderClient, error) {
+		srv, err := NewLMTPServer(logger, resolver, func() (ForwarderClient, error) {
 			rcpts := make([]string, 0)
 			return mockForwarder{
 				// Collects rcpts
@@ -394,7 +401,7 @@ func TestLMTPServer(t *testing.T) {
 		}
 
 		var recorder sessionRecorder
-		srv, err := NewLMTPServer(resolver, recorder.Forwarder)
+		srv, err := NewLMTPServer(logger, resolver, recorder.Forwarder)
 		if err != nil {
 			t.Fatal(err)
 		}
