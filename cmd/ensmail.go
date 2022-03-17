@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net"
 	"os"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/royalfork/ensmail/pkg/ensmail"
 )
+
+var version = "dev"
 
 func main() {
 	var (
@@ -26,7 +29,13 @@ func main() {
 	flag.StringVar(&Web3RTCURL, "web3", "", "WebRTC URL for web3")
 	flag.StringVar(&LMTPServerSocket, "s", "ensmail.sock", "LMTP server listens on this socket")
 	flag.StringVar(&LMTPForwardSocket, "f", "forward.sock", "LMTP forwards mail to this socket")
+	v := flag.Bool("v", false, "print version")
 	flag.Parse()
+
+	if *v {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	ENSRegistry = common.HexToAddress(ensRegistry)
 

@@ -14,6 +14,7 @@ import (
 	gsmtp "github.com/emersion/go-smtp"
 	"github.com/foxcpp/go-mockdns"
 	"github.com/foxcpp/maddy/tests"
+	"github.com/go-kit/log"
 	"github.com/royalfork/ensmail/pkg/ens"
 	"github.com/royalfork/ensmail/pkg/ensmail"
 )
@@ -138,7 +139,7 @@ func runENSMail(t *testing.T, rcptLabel, resolvedEmail, ensMailSock, maddySock s
 		return gsmtp.NewClientLMTP(conn, "ensmail-testclient.local")
 	}
 
-	ensServer, err := ensmail.NewLMTPServer(resolver.Email, newForwarderClient)
+	ensServer, err := ensmail.NewLMTPServer(log.NewNopLogger(), resolver.Email, newForwarderClient)
 	if err != nil {
 		t.Fatal(err)
 	}
