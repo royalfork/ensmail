@@ -1,0 +1,16 @@
+[Unit]
+Description=ENSMail Resolution Service
+ConditionPathExists=/usr/bin/ensmail
+ConditionPathExists=/run/ensmail
+After=network.target
+ 
+[Service]
+Type=simple
+User=ensmail
+Group=ensmail
+Restart=always
+EnvironmentFile=/etc/ensmail/web3.env
+ExecStart=/usr/bin/ensmail
+ 
+[Install]
+WantedBy=multi-user.target

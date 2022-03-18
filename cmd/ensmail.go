@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/emersion/go-smtp"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,9 +29,9 @@ func main() {
 	)
 
 	flag.StringVar(&ensRegistry, "ens", "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e", "ENS Registry address")
-	flag.StringVar(&Web3RTCURL, "web3", "", "WebRTC URL for web3")
-	flag.StringVar(&LMTPServerSocket, "s", "ensmail.sock", "LMTP server listens on this socket")
-	flag.StringVar(&LMTPForwardSocket, "f", "forward.sock", "LMTP forwards mail to this socket")
+	flag.StringVar(&Web3RTCURL, "web3", "", "WebRTC URL for web3 (overwrites HTTP_WEB3_PROVIDER env var)")
+	flag.StringVar(&LMTPServerSocket, "s", "/run/ensmail/ensmail.sock", "LMTP server listens on this socket")
+	flag.StringVar(&LMTPForwardSocket, "f", "/run/ensmail/forward.sock", "LMTP forwards mail to this socket")
 	v := flag.Bool("v", false, "print version")
 	flag.Parse()
 
@@ -37,11 +40,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	if Web3RTCURL == "" {
+		Web3RTCURL = os.Getenv("HTTP_WEB3_PROVIDER")
+	}
+
 	ENSRegistry = common.HexToAddress(ensRegistry)
 
-	logger := log.With(log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)), "ts", log.DefaultTimestampUTC)
-
-	logger.Log("ens", ENSRegistry, "web3", Web3RTCURL, "serveSocket", LMTPServerSocket, "fowardSocket", LMTPForwardSocket)
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
+	logger.Log("ens", ENSRegistry, "serveSocket", LMTPServerSocket, "fowardSocket", LMTPForwardSocket)
 
 	client, err := ethclient.Dial(Web3RTCURL)
 	if err != nil {
@@ -74,9 +80,22 @@ func main() {
 		logger.Log("call", "new.Listen", "err", err)
 		os.Exit(1)
 	}
+	defer l.Close()
 
-	if err := s.Serve(l); err != nil {
-		logger.Log("call", "s.Serve", "err", err)
-		os.Exit(1)
-	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		if err := s.Serve(l); err != nil {
+			logger.Log("call", "s.Serve", "err", err)
+			os.Exit(1)
+		}
+		wg.Done()
+	}()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill, syscall.SIGTERM)
+	<-c
+
+	s.Close()
+	wg.Wait()
 }

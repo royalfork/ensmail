@@ -29,3 +29,14 @@ build:
 		"-X main.version=${shell git describe --always --dirty --tags}" \
 		-o build/ensmail \
 		./cmd/ensmail.go
+
+install: build
+	export GOBIN=/usr/bin; go install github.com/foxcpp/maddy/cmd/maddy@latest
+	cp ./build/ensmail /usr/bin
+	-useradd ensmail -U -M -s /sbin/nologin
+	-mkdir /run/ensmail /etc/ensmail
+	chown -R ensmail:ensmail /run/ensmail
+	@echo HTTP_WEB3_PROVIDER=$(HTTP_WEB3_PROVIDER) > /etc/ensmail/web3.env
+	cp ./init/* /etc/systemd/system/
+	systemctl daemon-reload
+	systemctl enable ensmail
