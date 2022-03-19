@@ -36,8 +36,7 @@ install: build
 	-useradd ensmail -U -M -s /sbin/nologin
 	-mkdir /run/ensmail /etc/ensmail
 	chown -R ensmail:ensmail /run/ensmail
-	@echo HTTP_WEB3_PROVIDER=$(HTTP_WEB3_PROVIDER) > /etc/ensmail/web3.env
-	cp ./configs/maddy.conf /etc/ensmail/maddy.conf
+	cp -n ./configs/* /etc/ensmail/
 	cp ./init/* /etc/systemd/system/
 	systemctl daemon-reload
 	systemctl enable ensmail maddy
