@@ -13,62 +13,24 @@ ENSMail is an email forwarding service for the [Ethereum Name System](ens.domain
 
 ## Technical Details
 
-The ENSMail system is comprised of 2 components: the [Maddy email server](maddy.email) and a custom built ENS email resolution service (ENS service).
-- Maddy exposes a public SMTP endpoint (over STARTTLS, with dmarc, dkim, and spf mail verification).
+The ENSMail system consists of 2 components: the [Maddy email server](maddy.email) and a custom built ENS email resolution service (ENS service).
+- Maddy exposes a public SMTP endpoint (over STARTTLS, with DMARC, DKIM, and SPF mail verification).
 - Maddy forwards incoming mail to the ENS service over LMTP.
-- The ENS service looks up the mail's RCPT addresses in ENS, and queries the text/email record.
-- ENS service rewrites the mails RCPT addresses with the addresses found in ENS, and forwards the mail over LMTP to Maddy
-- Maddy receives the re-written mail and forwards it to the remote SMTP server (over STARTTLS, with dane and mta-sts server verification).
+- The ENS service looks up the mail's RCPT addresses in ENS (it queries text/email records).
+- ENS service rewrites the mails RCPT addresses with the email addresses found in ENS, and forwards the mail over LMTP to Maddy
+- Maddy receives the re-written mail and forwards it to the remote SMTP server (over STARTTLS, with DANE and MTA-STS server verification).
 
 This diagram documents the SMTP/LMTP message flow for a successful mail forwarding session initiated by `sender@example.com`.
-```mermaid
-sequenceDiagram;
-    example.com->>Maddy-SMTP: EHLO;
-    Maddy-SMTP->>ENSMail: LHLO;
-    ENSMail->>Maddy-LMTP: LHLO;
-    Maddy-LMTP->>ENSMail: 250 OK;
-    ENSMail->>Maddy-SMTP: 250 OK;
-    Maddy-SMTP->>example.com: 250 OK;
-    example.com->>Maddy-SMTP: MAIL FROM sender@example.com;
-    Maddy-SMTP->>ENSMail: MAIL FROM sender@example.com;
-    ENSMail->>Maddy-LMTP: MAIL FROM sender@example.com;
-    Maddy-LMTP->>ENSMail: 250 OK;
-    ENSMail->>Maddy-SMTP: 250 OK;
-    Maddy-SMTP->>example.com: 250 OK;
-    example.com->>Maddy-SMTP: RCPT TO name@ensmail.org;
-    Maddy-SMTP->>ENSMail: RCPT TO name@ensmail.org;
-    ENSMail->>ENS: resolver(name.eth);
-    ENS->>ENSMail: 0x1234...;
-    ENSMail->>ENS: email(name.eth);
-    ENS->>ENSMail: resolved@public.com;
-    ENSMail->>Maddy-LMTP: RCPT TO resolved@public.com;
-    Maddy-LMTP->>public.com: EHLO
-    public.com->>Maddy-LMTP: 250 OK;
-    Maddy-LMTP->>public.com: MAIL FROM sender@example.com;
-    public.com->>Maddy-LMTP: 250 OK;
-    Maddy-LMTP->>public.com: RCPT TO resolved@public.com;
-    public.com->>Maddy-LMTP: 250 OK;
-    Maddy-LMTP->>ENSMail: 250 OK;
-    ENSMail->>Maddy-SMTP: 250 OK;
-    Maddy-SMTP->>example.com: 250 OK;
-    example.com->>Maddy-SMTP: DATA ...;
-    Maddy-SMTP->>ENSMail: DATA ...;
-    ENSMail->>Maddy-LMTP: DATA ...;
-    Maddy-LMTP->>public.com: DATA ...;
-    public.com->>Maddy-LMTP: 250 OK;
-    Maddy-LMTP->>ENSMail: 250 OK;
-    ENSMail->>Maddy-SMTP: 250 OK;
-    Maddy-SMTP->>example.com: 250 OK;
-```
+![ensmail-smtp-flow](https://user-images.githubusercontent.com/8282941/160263577-bf117b1e-7925-4d95-9865-7e93166e2dd6.png)
 *Note: Unlike conventional SMTP servers which maintain an outgoing mail-queue and retry logic for failed deliveries, ENSMail uses connection-stage rejection.  If an incoming message can't be immediately forwarded to its ultimate destination, the message will be rejected.*
 
 ## Development
 
 Development requires go1.17 or later.  Run `make test` to run unit tests, and `make build` to build.
 
-Integration tests can be run with `make test-full`, but require the following binaries in $PATH:
+Integration tests are run with `make test-full`, but require the following binaries in $PATH:
 1. [mkcert](https://github.com/FiloSottile/mkcert), to generate local TLS certificates.
-2. [maddy.cover](https://github.com/foxcpp/maddy/blob/master/tests/build_cover.sh), debug-enabled `maddy` executable required by the maddy testing suite.
+2. [maddy.cover](https://github.com/foxcpp/maddy/blob/master/tests/build_cover.sh), a debug-enabled `maddy` executable required by the maddy testing suite.
 
 ## Deployment
 
